@@ -1,0 +1,23 @@
+[package]
+name = "bls-style-digest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+digest = "0.10"
+generic-ec = { version = "0.4", features = ["serde", "curve-ed25519", "hash-to-scalar"] }
+generic-ec-zkp = "0.4"
+key-share = "0.5"
+round-based = { version = "0.3", features = ["derive"] }
+sha2 = "0.10"
+serde = "1"
+thiserror = { version = "2" }
+
+[dev-dependencies]
+futures = "0.3"
+key-share = { version = "0.5", features = ["spof"] }
+rand = "0.8"
+rand_dev = "0.1"
+round-based = { version = "0.3", features = ["dev"] }
+test-case = "3"
+tokio = { version = "1", features = ["macros"] }
