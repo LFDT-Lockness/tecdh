@@ -48,7 +48,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bls-style-hash"
+name = "bls-style-digest"
 version = "0.1.0"
 dependencies = [
  "digest",
