@@ -87,16 +87,19 @@ where
     E: generic_ec::Curve,
     M: round_based::Mpc<ProtocolMessage = mpc::Msg<E>>,
 {
-    let share_preimages = match key_share.vss_setup.as_ref() {
-        None => None,
-        Some(vss_setup) => Some(
-            participants
-                .iter()
-                .map(|i| vss_setup.I.get(usize::from(*i)).copied())
-                .collect::<Option<Vec<_>>>()
-                .ok_or(mpc::Error::CreationFailed("share is not SSS"))?,
-        ),
-    };
+    let share_preimages = key_share
+        .vss_setup
+        .as_ref()
+        .map({
+            |vss_setup| {
+                participants
+                    .iter()
+                    .map(|i| vss_setup.I.get(usize::from(*i)).copied())
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or(mpc::Error::CreationFailed("share is not SSS"))
+            }
+        })
+        .transpose()?;
     let share_preimages = share_preimages.as_ref().map(|v| v.as_ref());
 
     mpc::run::<D, E, M>(
@@ -145,8 +148,7 @@ mod test {
     #[test_case::test_case(3, 5; "t3n5")]
     #[test_case::test_case(5, 5; "t5n5")]
     #[test_case::test_case(3, 7; "t3n7")]
-    #[tokio::test]
-    async fn protocol_same_as_digest(t: u16, n: u16) {
+    fn protocol_same_as_digest(t: u16, n: u16) {
         let mut rng = rand_dev::DevRng::new();
 
         let secret_key = generic_ec::NonZero::<generic_ec::SecretScalar<E>>::random(&mut rng);
@@ -163,19 +165,10 @@ mod test {
             .map(|x| u16::try_from(*x).unwrap())
             .collect::<Vec<_>>();
 
-        let mut simulation = round_based::simulation::Simulation::<crate::mpc::Msg<E>>::new();
-        let mut outputs = vec![];
-
-        for (party_index, i) in party_indexes.iter().copied().zip(0..) {
+        let digests = round_based::sim::run_with_setup(party_indexes.iter().copied(), |i, party, party_index| {
             let share = &shares[party_index];
-            let party = simulation.add_party();
-            let parties = &parties; // to prevent it being moved into async closure
-
-            outputs.push(async move {
-                crate::start_digest::<sha2::Sha256, _, _>(data, i, share, parties, party).await
-            });
-        }
-        let digests = futures::future::try_join_all(outputs).await.unwrap();
+            crate::start_digest::<sha2::Sha256, _, _>(data, i, share, &parties, party)
+        }).unwrap().expect_ok().into_vec();
 
         let golden = super::digest::<sha2::Sha256, E>(data, &secret_key);
         for digest in &digests {
