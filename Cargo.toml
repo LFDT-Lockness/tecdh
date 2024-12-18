@@ -5,12 +5,16 @@ edition = "2021"
 
 [dependencies]
 digest = "0.10"
-generic-ec = { version = "0.4", features = ["serde", "curve-ed25519", "hash-to-scalar"] }
+generic-ec = { version = "0.4", features = ["serde", "curve-secp256k1", "hash-to-scalar"] }
 generic-ec-zkp = "0.4"
 key-share = "0.5"
 round-based = { version = "0.4", features = ["derive"] }
 serde = "1"
+sha2 = "0.10"
 thiserror = { version = "2" }
+
+k256 = { version = "0.13", features = ["hash2curve"] }
+generic-ec-curves = { version = "0.2", features = ["rust-crypto"] }
 
 [dev-dependencies]
 generic-ec = { version = "0.4", features = ["curve-ed25519"] }
@@ -18,5 +22,4 @@ key-share = { version = "0.5", features = ["spof"] }
 rand = "0.8"
 rand_dev = "0.1"
 round-based = { version = "0.4", features = ["sim"] }
-sha2 = "0.10"
 test-case = "3"

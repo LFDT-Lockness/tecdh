@@ -1,15 +1,19 @@
 use round_based::SinkExt as _;
 
+/// Protocol message
 #[derive(round_based::ProtocolMessage, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub enum Msg<E: generic_ec::Curve> {
+    /// The only round
     Partial(MsgPartial<E>),
 }
 
+/// Protocol message
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub struct MsgPartial<E: generic_ec::Curve> {
-    pub digest: generic_ec::Point<E>,
+    /// Partial digest of a party
+    pub digest: generic_ec::NonZero<generic_ec::Point<E>>,
 }
 
 pub(crate) async fn run<D, E, M>(
@@ -22,7 +26,7 @@ pub(crate) async fn run<D, E, M>(
 ) -> Result<generic_ec::Point<E>, Error>
 where
     D: digest::Digest,
-    E: generic_ec::Curve,
+    E: super::int::HashToCurve,
     M: round_based::Mpc<ProtocolMessage = Msg<E>>,
 {
     let round_based::MpcParty { delivery, .. } = party.into_party();
@@ -54,6 +58,7 @@ where
     super::aggregate(&partials, share_preimages).ok_or(Error::AggregateFailed)
 }
 
+/// Error with a reason for protocol start or execution failure
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -63,8 +68,10 @@ pub enum Error {
     /// Receive message error
     #[error("recv message")]
     RecvMessage(Box<dyn std::error::Error + Send + Sync>),
+    /// Aggregation failure
     #[error("aggregation failed")]
     AggregateFailed,
+    /// Failure to start
     #[error("creating protocol failed")]
     CreationFailed(&'static str),
 }

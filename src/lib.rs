@@ -1,31 +1,74 @@
 //! This crate implements digesting into elliptic curve points keyed with a
 //! secret scalar for this curve. This digest resembles BLS signatures, but
 //! because we don't do signature verification, we're not limited in the choice
-//! of curves. The procedure for a digest is as follows:
+//! of curves. Hashing to curve is based on rfc9380 with SHA2 hash and
+//! expand_message_xmd expansion. The procedure for a digest is as follows:
 //!
 //! 1. Input parameters:
-//!     * `D` - cryptographic hash function
 //!     * `E` - an elliptic curve
 //!     * `m` - message to digest, given as a byte string
 //!     * `x` - secret key, given as a scalar for `E`
-//! 2. Create `HPRng` - a pseudo-random number generator based on `D` and `m`,
-//!    with a procedure described in
-//!    [`hash_rng`](https://docs.rs/rand_hash/0.1.1/rand_hash/index.html)
-//! 3. Generate random `s` from `HPRng` by using a procedure defined for this
-//!    curve
-//! 4. If `s` is zero, retry from step *3*. If `s` is zero after 100 attempts,
-//!    abort
-//! 5. Compute `generator(E) * s * x`
+//! 2. Initialize `i` to 0
+//! 2. Use the procedure in rfc9380 to hash the data `i || m` to curve point `p`
+//! 4. If `p` the procedure failed, or if `p` is zero or an invalid point,
+//!    increment `i` and retry from step *3*. If `p` 100 attempts already
+//!    elapsed, abort
+//! 5. Compute `p * x`
 
+#![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::expect_used, clippy::unwrap_used, clippy::panic)
+)]
+
+/// Helper types for the MPC execution
 pub mod mpc;
 
+mod int {
+    pub trait HashToCurve: generic_ec::Curve {
+        fn hash_to_curve(
+            messages: &[&[u8]],
+            dst: &[u8],
+        ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>>;
+    }
+}
+
+impl int::HashToCurve for generic_ec::curves::Secp256k1 {
+    fn hash_to_curve(messages: &[&[u8]], dst: &[u8]) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
+        use generic_ec::curves::Secp256k1;
+        type ExtendedHash = k256::elliptic_curve::hash2curve::ExpandMsgXmd<sha2::Sha256>;
+        use k256::elliptic_curve::hash2curve::GroupDigest as _;
+        // This can fail due to arithmetic overflows or internal bugs like
+        // passing an empty buffer to fill. They should never happen
+        // theoretically
+        let plain = k256::Secp256k1::hash_from_bytes::<ExtendedHash>(messages, &[dst]).ok()?;
+        let plain = generic_ec_curves::rust_crypto::RustCryptoPoint(plain);
+        // Can fail if point: is not on curve, is not torsion free
+        let plain: generic_ec::Point<Secp256k1> =
+            generic_ec::as_raw::TryFromRaw::try_from_raw(plain)?;
+        // Can fail if point is zero
+        generic_ec::NonZero::try_from(plain).ok()
+    }
+}
+
+fn hash_to_curve<E: int::HashToCurve>(message: &[u8], dst: &[u8]) -> generic_ec::NonZero<generic_ec::Point<E>> {
+    for i in 0..=255u8 {
+        if let Some(r) = E::hash_to_curve(&[&[i], message], dst) {
+            return r;
+        }
+    }
+    #[allow(clippy::panic)]
+    {
+        panic!("ugh");
+    }
+}
+
 /// Compute digest of `data` keyed with `secret_key`
-pub fn digest<D: digest::Digest, E: generic_ec::Curve>(
+pub fn digest<D: digest::Digest, E: int::HashToCurve>(
     data: &[u8],
     secret_key: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
-) -> generic_ec::Point<E> {
-    let plain_scalar = generic_ec::Scalar::<E>::from_hash::<D>(&data);
-    let plain = generic_ec::Point::generator() * plain_scalar;
+) -> generic_ec::NonZero<generic_ec::Point<E>> {
+    let plain = hash_to_curve(data, b"dfns-bls-style-hash");
     plain * secret_key
 }
 
@@ -35,10 +78,10 @@ pub fn digest<D: digest::Digest, E: generic_ec::Curve>(
 ///
 /// Partial digest is exactly the same as a full digest; this is a convenient
 /// alias if you want to distinguish the functionality in your code.
-pub fn partial_digest<D: digest::Digest, E: generic_ec::Curve>(
+pub fn partial_digest<D: digest::Digest, E: int::HashToCurve>(
     data: &[u8],
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
-) -> generic_ec::Point<E> {
+) -> generic_ec::NonZero<generic_ec::Point<E>> {
     digest::<D, E>(data, secret_share)
 }
 
@@ -48,7 +91,7 @@ pub fn partial_digest<D: digest::Digest, E: generic_ec::Curve>(
 /// gives the points at which the keyshare values are computed, and should be in
 /// the same order by participant as `partials`.
 pub fn aggregate<E: generic_ec::Curve>(
-    partials: &[generic_ec::Point<E>],
+    partials: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
 ) -> Option<generic_ec::Point<E>> {
     if let Some(share_preimages) = share_preimages {
@@ -84,7 +127,7 @@ pub async fn start_digest<D, E, M>(
 ) -> Result<generic_ec::Point<E>, mpc::Error>
 where
     D: digest::Digest,
-    E: generic_ec::Curve,
+    E: int::HashToCurve,
     M: round_based::Mpc<ProtocolMessage = mpc::Msg<E>>,
 {
     let share_preimages = key_share
@@ -115,7 +158,7 @@ where
 
 #[cfg(test)]
 mod test {
-    type E = generic_ec::curves::Ed25519;
+    type E = generic_ec::curves::Secp256k1;
 
     #[test_case::test_case(3, 5; "t3n5")]
     #[test_case::test_case(5, 5; "t5n5")]
@@ -165,10 +208,16 @@ mod test {
             .map(|x| u16::try_from(*x).unwrap())
             .collect::<Vec<_>>();
 
-        let digests = round_based::sim::run_with_setup(party_indexes.iter().copied(), |i, party, party_index| {
-            let share = &shares[party_index];
-            crate::start_digest::<sha2::Sha256, _, _>(data, i, share, &parties, party)
-        }).unwrap().expect_ok().into_vec();
+        let digests = round_based::sim::run_with_setup(
+            party_indexes.iter().copied(),
+            |i, party, party_index| {
+                let share = &shares[party_index];
+                crate::start_digest::<sha2::Sha256, _, _>(data, i, share, &parties, party)
+            },
+        )
+        .unwrap()
+        .expect_ok()
+        .into_vec();
 
         let golden = super::digest::<sha2::Sha256, E>(data, &secret_key);
         for digest in &digests {
