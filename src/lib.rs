@@ -26,6 +26,9 @@ pub mod mpc;
 
 mod int {
     pub trait HashToCurve: generic_ec::Curve {
+        /// This function may fail, but the probability of that must be low. If
+        /// it fails, we retry with a different prefix. If it fails too many
+        /// times, we panic
         fn hash_to_curve(
             messages: &[&[u8]],
             dst: &[u8],
@@ -34,24 +37,31 @@ mod int {
 }
 
 impl int::HashToCurve for generic_ec::curves::Secp256k1 {
-    fn hash_to_curve(messages: &[&[u8]], dst: &[u8]) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
-        use generic_ec::curves::Secp256k1;
+    fn hash_to_curve(
+        messages: &[&[u8]],
+        dst: &[u8],
+    ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
         type ExtendedHash = k256::elliptic_curve::hash2curve::ExpandMsgXmd<sha2::Sha256>;
         use k256::elliptic_curve::hash2curve::GroupDigest as _;
-        // This can fail due to arithmetic overflows or internal bugs like
-        // passing an empty buffer to fill. They should never happen
-        // theoretically
+        // This can fail if:
+        // 1. No domain separation tag is given
+        // 2. Output length is zero - impossible
+        // 3. Output length is longer than u16::MAX - impossible
+        // 4. Output length is grater than 255 * 32 - impossible
+        // 5. Output length overflows usize - impossible
         let plain = k256::Secp256k1::hash_from_bytes::<ExtendedHash>(messages, &[dst]).ok()?;
         let plain = generic_ec_curves::rust_crypto::RustCryptoPoint(plain);
-        // Can fail if point: is not on curve, is not torsion free
-        let plain: generic_ec::Point<Secp256k1> =
-            generic_ec::as_raw::TryFromRaw::try_from_raw(plain)?;
+        let plain: generic_ec::Point<generic_ec_curves::Secp256k1> =
+            generic_ec::as_raw::FromRaw::from_raw(plain);
         // Can fail if point is zero
         generic_ec::NonZero::try_from(plain).ok()
     }
 }
 
-fn hash_to_curve<E: int::HashToCurve>(message: &[u8], dst: &[u8]) -> generic_ec::NonZero<generic_ec::Point<E>> {
+fn hash_to_curve<E: int::HashToCurve>(
+    message: &[u8],
+    dst: &[u8],
+) -> generic_ec::NonZero<generic_ec::Point<E>> {
     for i in 0..=255u8 {
         if let Some(r) = E::hash_to_curve(&[&[i], message], dst) {
             return r;
@@ -59,7 +69,7 @@ fn hash_to_curve<E: int::HashToCurve>(message: &[u8], dst: &[u8]) -> generic_ec:
     }
     #[allow(clippy::panic)]
     {
-        panic!("ugh");
+        panic!("Bad curve or hash algorithm: too many failures");
     }
 }
 

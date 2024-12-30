@@ -23,3 +23,7 @@ rand = "0.8"
 rand_dev = "0.1"
 round-based = { version = "0.4", features = ["sim"] }
 test-case = "3"
+
+[patch.crates-io]
+generic-ec = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "d072be9085615ee63d34ddda7a3b39cf103533de" }
+generic-ec-curves = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "d072be9085615ee63d34ddda7a3b39cf103533de" }
