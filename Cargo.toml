@@ -8,10 +8,13 @@ digest = "0.10"
 generic-ec = { version = "0.4", features = ["serde", "curve-secp256k1", "hash-to-scalar"] }
 generic-ec-zkp = "0.4"
 key-share = "0.5"
+rand_core = { version = "0.6", default-features = false }
+rand_hash = { version = "0.1" }
 round-based = { version = "0.4", features = ["derive"] }
 serde = "1"
 sha2 = "0.10"
 thiserror = { version = "2" }
+udigest = { version = "0.2", default-features = false, features = ["inline-struct", "derive"] }
 
 k256 = { version = "0.13", features = ["hash2curve"] }
 generic-ec-curves = { version = "0.2", features = ["rust-crypto"] }
@@ -25,5 +28,5 @@ round-based = { version = "0.4", features = ["sim"] }
 test-case = "3"
 
 [patch.crates-io]
-generic-ec = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "d072be9085615ee63d34ddda7a3b39cf103533de" }
-generic-ec-curves = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "d072be9085615ee63d34ddda7a3b39cf103533de" }
+generic-ec = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "fafa3ed01a54c988ee78e4e7eab974fe4fd461c7" }
+generic-ec-curves = { git = "https://github.com/LFDT-Lockness/generic-ec", rev = "fafa3ed01a54c988ee78e4e7eab974fe4fd461c7" }

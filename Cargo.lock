@@ -40,12 +40,15 @@ dependencies = [
  "k256",
  "key-share",
  "rand",
+ "rand_core",
  "rand_dev",
+ "rand_hash",
  "round-based",
  "serde",
  "sha2",
  "test-case",
  "thiserror 2.0.3",
+ "udigest",
 ]
 
 [[package]]
@@ -318,7 +321,7 @@ dependencies = [
 [[package]]
 name = "generic-ec"
 version = "0.4.4"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=d072be9085615ee63d34ddda7a3b39cf103533de#d072be9085615ee63d34ddda7a3b39cf103533de"
+source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
 dependencies = [
  "curve25519-dalek",
  "digest",
@@ -338,7 +341,7 @@ dependencies = [
 [[package]]
 name = "generic-ec-core"
 version = "0.2.2"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=d072be9085615ee63d34ddda7a3b39cf103533de#d072be9085615ee63d34ddda7a3b39cf103533de"
+source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
 dependencies = [
  "generic-array",
  "rand_core",
@@ -350,7 +353,7 @@ dependencies = [
 [[package]]
 name = "generic-ec-curves"
 version = "0.2.3"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=d072be9085615ee63d34ddda7a3b39cf103533de#d072be9085615ee63d34ddda7a3b39cf103533de"
+source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
 dependencies = [
  "curve25519-dalek",
  "elliptic-curve",

@@ -23,6 +23,7 @@
 
 /// Helper types for the MPC execution
 pub mod mpc;
+mod zkp;
 
 mod int {
     pub trait HashToCurve: generic_ec::Curve {
@@ -89,10 +90,21 @@ pub fn digest<D: digest::Digest, E: int::HashToCurve>(
 /// Partial digest is exactly the same as a full digest; this is a convenient
 /// alias if you want to distinguish the functionality in your code.
 pub fn partial_digest<D: digest::Digest, E: int::HashToCurve>(
+    shared_state: &impl udigest::Digestable,
     data: &[u8],
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
-) -> generic_ec::NonZero<generic_ec::Point<E>> {
-    digest::<D, E>(data, secret_share)
+    rng: &mut impl rand_core::RngCore,
+) -> (generic_ec::NonZero<generic_ec::Point<E>>, zkp::Proof<E>) {
+    let plain = hash_to_curve(data, b"dfns-bls-style-hash");
+    let digest = plain * secret_share;
+    let proof_data = zkp::Data {
+        pub_share: (generic_ec::Point::generator() * secret_share).into_inner(),
+        base: plain.into_inner(),
+        value: digest.into_inner(),
+    };
+    let r = generic_ec::Scalar::random(rng);
+    let proof = zkp::prove::<D, E>(shared_state, secret_share, proof_data, r);
+    (digest, proof)
 }
 
 /// Aggregate `partials` - partial digest values - into a full value.
@@ -100,22 +112,56 @@ pub fn partial_digest<D: digest::Digest, E: int::HashToCurve>(
 /// `share_preimages` should be `None` for additive key shares. For SSS, it
 /// gives the points at which the keyshare values are computed, and should be in
 /// the same order by participant as `partials`.
-pub fn aggregate<E: generic_ec::Curve>(
-    partials: &[generic_ec::NonZero<generic_ec::Point<E>>],
+pub fn aggregate<D: digest::Digest, E: int::HashToCurve>(
+    data: &[u8],
+    partials: &[(generic_ec::NonZero<generic_ec::Point<E>>, zkp::Proof<E>)],
+    public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
+    eid: &[u8],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
-) -> Option<generic_ec::Point<E>> {
+) -> Result<generic_ec::Point<E>, AggregateFailed> {
+    let base = hash_to_curve(data, b"dfns-bls-style-hash");
+    let mut blame = Vec::new();
+    for (((value, proof), pub_share), j) in partials.iter().zip(public_shares).zip(0..) {
+        let shared_state = zkp::SharedState {
+            eid,
+            prover_index: j,
+        };
+        let data = zkp::Data {
+            pub_share: pub_share.into_inner(),
+            base: base.into_inner(),
+            value: value.into_inner(),
+        };
+        if zkp::verify::<D, E>(&shared_state, data, *proof).is_err() {
+            blame.push(j);
+        };
+    }
     if let Some(share_preimages) = share_preimages {
         // shamir aggregation
         let lagrange_coefficients = (0..(share_preimages.len()))
             .map(|j| generic_ec_zkp::polynomial::lagrange_coefficient_at_zero(j, share_preimages))
-            .collect::<Option<Vec<_>>>()?;
-        Some(generic_ec::Scalar::multiscalar_mul(
-            lagrange_coefficients.into_iter().zip(partials),
+            .collect::<Option<Vec<_>>>()
+            .ok_or(AggregateFailed::Lagrange)?;
+        Ok(generic_ec::Scalar::multiscalar_mul(
+            lagrange_coefficients
+                .into_iter()
+                .zip(partials.iter().map(|t| t.0)),
         ))
     } else {
         // additive aggregation
-        Some(partials.iter().sum())
+        Ok(partials.iter().map(|t| t.0).sum())
     }
+}
+
+/// Error for aggregation failing
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum AggregateFailed {
+    /// Lagrange polynomial construction failed, probably because some points
+    /// repeat
+    #[error("lagrange interpolation failed")]
+    Lagrange,
+    /// Party ZKP verification failed
+    #[error("honesty verification failed for parties: {0:?}")]
+    Verification(Vec<u16>),
 }
 
 /// Start an MPC protocol that digests the data with shared private key. Returns
@@ -129,11 +175,13 @@ pub fn aggregate<E: generic_ec::Curve>(
 ///   shares.
 /// - `party` - the `round-based` party
 pub async fn start_digest<D, E, M>(
+    eid: &[u8],
     data: &[u8],
     i: u16,
     key_share: &key_share::CoreKeyShare<E>,
     participants: &[u16],
     party: M,
+    rng: &mut impl rand_core::RngCore,
 ) -> Result<generic_ec::Point<E>, mpc::Error>
 where
     D: digest::Digest,
@@ -154,14 +202,22 @@ where
         })
         .transpose()?;
     let share_preimages = share_preimages.as_ref().map(|v| v.as_ref());
+    let public_shares = &key_share.public_shares;
+    let public_shares = participants
+        .iter()
+        .map(|i| public_shares[usize::from(*i)])
+        .collect::<Vec<_>>();
 
     mpc::run::<D, E, M>(
+        eid,
         data,
         &key_share.x,
         i,
         key_share.min_signers(),
+        &public_shares,
         share_preimages,
         party,
+        rng,
     )
     .await
 }
@@ -184,16 +240,36 @@ mod test {
             .set_shared_secret_key(secret_key.clone())
             .generate_shares(&mut rng)
             .unwrap();
+        let public_shares = &shares[0].public_shares;
         let share_preimages = shares[0].vss_setup.as_ref().map(|vss| &vss.I[0..t]);
 
         let data = b"take that you worm";
+        let eid = b"test";
 
         let digest = super::digest::<sha2::Sha256, E>(data, &secret_key);
         let partials = shares
             .iter()
-            .map(|s| super::partial_digest::<sha2::Sha256, E>(data, &s.x))
+            .zip(0..)
+            .map(|(s, i)| {
+                super::partial_digest::<sha2::Sha256, E>(
+                    &crate::zkp::SharedState {
+                        prover_index: i,
+                        eid,
+                    },
+                    data,
+                    &s.x,
+                    &mut rng,
+                )
+            })
             .collect::<Vec<_>>();
-        let restored = super::aggregate(&partials[0..t], share_preimages).unwrap();
+        let restored = super::aggregate::<sha2::Sha256, E>(
+            data,
+            &partials[0..t],
+            public_shares,
+            eid,
+            share_preimages,
+        )
+        .unwrap();
 
         assert_eq!(restored, digest);
     }
@@ -221,8 +297,15 @@ mod test {
         let digests = round_based::sim::run_with_setup(
             party_indexes.iter().copied(),
             |i, party, party_index| {
+                let mut rng = rng.fork();
                 let share = &shares[party_index];
-                crate::start_digest::<sha2::Sha256, _, _>(data, i, share, &parties, party)
+                let parties = &parties;
+                async move {
+                    crate::start_digest::<sha2::Sha256, _, _>(
+                        b"test", data, i, share, parties, party, &mut rng,
+                    )
+                    .await
+                }
             },
         )
         .unwrap()

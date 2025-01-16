@@ -14,15 +14,21 @@ pub enum Msg<E: generic_ec::Curve> {
 pub struct MsgPartial<E: generic_ec::Curve> {
     /// Partial digest of a party
     pub digest: generic_ec::NonZero<generic_ec::Point<E>>,
+    /// Proof of valid execution
+    pub proof: crate::zkp::Proof<E>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run<D, E, M>(
+    eid: &[u8],
     data: &[u8],
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
     i: u16,
     n: u16,
+    public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
     party: M,
+    rng: &mut impl rand_core::RngCore,
 ) -> Result<generic_ec::Point<E>, Error>
 where
     D: digest::Digest,
@@ -37,8 +43,12 @@ where
         rounds.add_round(round_based::rounds_router::simple_store::RoundInput::broadcast(i, n));
     let mut rounds = rounds.listen(incomings);
 
-    let digest = super::partial_digest::<D, E>(data, secret_share);
-    let my_partial = MsgPartial { digest };
+    let shared_state = udigest::inline_struct!("PrEq" {
+        eid,
+        prover_index: i,
+    });
+    let (digest, proof) = super::partial_digest::<D, E>(&shared_state, data, secret_share, rng);
+    let my_partial = MsgPartial { digest, proof };
     outgoings
         .send(round_based::Outgoing::broadcast(Msg::Partial(
             my_partial.clone(),
@@ -52,10 +62,11 @@ where
         .map_err(|x| Error::RecvMessage(Box::new(x)))?;
     let partials = partials
         .into_iter_including_me(my_partial)
-        .map(|s| s.digest)
+        .map(|s| (s.digest, s.proof))
         .collect::<Vec<_>>();
 
-    super::aggregate(&partials, share_preimages).ok_or(Error::AggregateFailed)
+    super::aggregate::<D, E>(data, &partials, public_shares, eid, share_preimages)
+        .map_err(Error::AggregateFailed)
 }
 
 /// Error with a reason for protocol start or execution failure
@@ -69,8 +80,8 @@ pub enum Error {
     #[error("recv message")]
     RecvMessage(Box<dyn std::error::Error + Send + Sync>),
     /// Aggregation failure
-    #[error("aggregation failed")]
-    AggregateFailed,
+    #[error("aggregation failed: {0}")]
+    AggregateFailed(crate::AggregateFailed),
     /// Failure to start
     #[error("creating protocol failed")]
     CreationFailed(&'static str),
