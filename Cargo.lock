@@ -320,8 +320,9 @@ dependencies = [
 
 [[package]]
 name = "generic-ec"
-version = "0.4.4"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8de1099ac0b4d87261d67ff5d4ed400af617a1da40b58908d759b9cf5fd8ed27"
 dependencies = [
  "curve25519-dalek",
  "digest",
@@ -340,8 +341,9 @@ dependencies = [
 
 [[package]]
 name = "generic-ec-core"
-version = "0.2.2"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcba5fdf70cc3ce5805c487f8523b4ceeb32e8ec5237c71ffd93c1ca47a97fee"
 dependencies = [
  "generic-array",
  "rand_core",
@@ -352,8 +354,9 @@ dependencies = [
 
 [[package]]
 name = "generic-ec-curves"
-version = "0.2.3"
-source = "git+https://github.com/LFDT-Lockness/generic-ec?rev=fafa3ed01a54c988ee78e4e7eab974fe4fd461c7#fafa3ed01a54c988ee78e4e7eab974fe4fd461c7"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c7c6d23001a5eb60eec2b785a63d2ca965fdfbaf3314b3b46df047398369e28"
 dependencies = [
  "curve25519-dalek",
  "elliptic-curve",
