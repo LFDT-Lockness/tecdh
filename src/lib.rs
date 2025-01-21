@@ -9,11 +9,17 @@
 //!     * `m` - message to digest, given as a byte string
 //!     * `x` - secret key, given as a scalar for `E`
 //! 2. Initialize `i` to 0
-//! 2. Use the procedure in rfc9380 to hash the data `i || m` to curve point `p`
+//! 2. Use the procedure in rfc9380 to hash the data `i as u8 || m` to curve point `p`
 //! 4. If `p` the procedure failed, or if `p` is zero or an invalid point,
-//!    increment `i` and retry from step *3*. If `p` 100 attempts already
+//!    increment `i` and retry from step *3*. If 256 attempts have already
 //!    elapsed, abort
 //! 5. Compute `p * x`
+//!
+//! The distributed digest is based on https://eprint.iacr.org/2020/096
+//! That is, the partial digest is computed in the same way as a regular digest
+//! albeit with a shared key, and in addition a ZK proof of honest digest
+//! computation is produced, which is checked when aggregating partial digests.
+//! We use the DDH-based DVRF instatiation with non-compact proofs
 
 #![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
 #![cfg_attr(
@@ -25,57 +31,8 @@
 pub mod mpc;
 mod zkp;
 
-mod int {
-    pub trait HashToCurve: generic_ec::Curve {
-        /// This function may fail, but the probability of that must be low. If
-        /// it fails, we retry with a different prefix. If it fails too many
-        /// times, we panic
-        fn hash_to_curve(
-            messages: &[&[u8]],
-            dst: &[u8],
-        ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>>;
-    }
-}
-
-impl int::HashToCurve for generic_ec::curves::Secp256k1 {
-    fn hash_to_curve(
-        messages: &[&[u8]],
-        dst: &[u8],
-    ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
-        type ExtendedHash = k256::elliptic_curve::hash2curve::ExpandMsgXmd<sha2::Sha256>;
-        use k256::elliptic_curve::hash2curve::GroupDigest as _;
-        // This can fail if:
-        // 1. No domain separation tag is given
-        // 2. Output length is zero - impossible
-        // 3. Output length is longer than u16::MAX - impossible
-        // 4. Output length is grater than 255 * 32 - impossible
-        // 5. Output length overflows usize - impossible
-        let plain = k256::Secp256k1::hash_from_bytes::<ExtendedHash>(messages, &[dst]).ok()?;
-        let plain = generic_ec_curves::rust_crypto::RustCryptoPoint(plain);
-        let plain: generic_ec::Point<generic_ec_curves::Secp256k1> =
-            generic_ec::as_raw::FromRaw::from_raw(plain);
-        // Can fail if point is zero
-        generic_ec::NonZero::try_from(plain).ok()
-    }
-}
-
-fn hash_to_curve<E: int::HashToCurve>(
-    message: &[u8],
-    dst: &[u8],
-) -> generic_ec::NonZero<generic_ec::Point<E>> {
-    for i in 0..=255u8 {
-        if let Some(r) = E::hash_to_curve(&[&[i], message], dst) {
-            return r;
-        }
-    }
-    #[allow(clippy::panic)]
-    {
-        panic!("Bad curve or hash algorithm: too many failures");
-    }
-}
-
 /// Compute digest of `data` keyed with `secret_key`
-pub fn digest<D: digest::Digest, E: int::HashToCurve>(
+pub fn digest<D: digest::Digest, E: internal::HashToCurve>(
     data: &[u8],
     secret_key: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
 ) -> generic_ec::NonZero<generic_ec::Point<E>> {
@@ -83,18 +40,45 @@ pub fn digest<D: digest::Digest, E: int::HashToCurve>(
     plain * secret_key
 }
 
+/// Evaluation of partial digest as outputted by parties, computed by
+/// [`partial_digest`]. `t` partials can be aggregated with [`aggregate`]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
+pub struct PartialEvaluation<E: generic_ec::Curve> {
+    /// Index of evaluating party
+    pub i: u16,
+    /// Partial digest
+    pub v: generic_ec::NonZero<generic_ec::Point<E>>,
+    /// ZK proof
+    pub pi: zkp::Proof<E>,
+}
+
 /// Compute partial digest of `data` keyed with a key of which `secret_share` is a
 /// share of. Use [`aggregate`] to aggregate multiple partial digests into a full
 /// digest
 ///
-/// Partial digest is exactly the same as a full digest; this is a convenient
-/// alias if you want to distinguish the functionality in your code.
-pub fn partial_digest<D: digest::Digest, E: int::HashToCurve>(
-    shared_state: &impl udigest::Digestable,
+/// Together with digest a proof of honest correctness is computed. Every party
+/// is required to send this proof together with partial digest for aggregation.
+///
+/// In paper this function is called `PartialEval(x, sk_i, vk_i)`, section IV.A
+///
+/// - `eid` - execution id, used to prevent replay attacks. All parties
+///   computing partial digests should agree on this value. This value cannot be
+///   reused between executions as that leads to replay attacks
+/// - `i` - index of this party among other computing parties. If `t` parties
+///   are computing partial digests, each index should be from `0` to `t - 1`.
+///   When using [`aggregate`], partial digests and proofs should be sorted by
+///   this index.
+/// - `data` - `x` in paper
+/// - `secret_share` - `sk` from paper. The `vk` argument in paper is computed
+///   from it
+pub fn partial_digest<D: digest::Digest, E: internal::HashToCurve>(
+    eid: &[u8],
+    i: u16,
     data: &[u8],
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
     rng: &mut impl rand_core::RngCore,
-) -> (generic_ec::NonZero<generic_ec::Point<E>>, zkp::Proof<E>) {
+) -> PartialEvaluation<E> {
     let plain = hash_to_curve(data, b"dfns-bls-style-hash");
     let digest = plain * secret_share;
     let proof_data = zkp::Data {
@@ -103,38 +87,62 @@ pub fn partial_digest<D: digest::Digest, E: int::HashToCurve>(
         value: digest.into_inner(),
     };
     let r = generic_ec::Scalar::random(rng);
-    let proof = zkp::prove::<D, E>(shared_state, secret_share, proof_data, r);
-    (digest, proof)
+    let shared_state = zkp::SharedState {
+        eid,
+        prover_index: i,
+    };
+    let proof = zkp::prove::<D, E>(&shared_state, secret_share, proof_data, r);
+    PartialEvaluation {
+        i,
+        v: digest,
+        pi: proof,
+    }
 }
 
 /// Aggregate `partials` - partial digest values - into a full value.
 ///
-/// `share_preimages` should be `None` for additive key shares. For SSS, it
-/// gives the points at which the keyshare values are computed, and should be in
-/// the same order by participant as `partials`.
-pub fn aggregate<D: digest::Digest, E: int::HashToCurve>(
-    data: &[u8],
-    partials: &[(generic_ec::NonZero<generic_ec::Point<E>>, zkp::Proof<E>)],
-    public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
+/// - `share_preimages` - should be `None` for additive key shares. For SSS, it
+///   gives the points at which the keyshare values are computed, and should be in
+///   the same order by participant as `partials`.
+/// - `data` - `x` in paper
+/// - `public_shares` - list of public shares of parties who computed partial
+///   digests, given in the same order as partials and share preimages. `VK` in
+///   paper
+/// - `partials` - `E` in paper
+///
+/// In paper this function is called `Combine(pk, VK, x, E)`, section IV.A
+pub fn aggregate<D: digest::Digest, E: internal::HashToCurve>(
     eid: &[u8],
+    data: &[u8],
+    partials: &[PartialEvaluation<E>],
+    public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
 ) -> Result<generic_ec::Point<E>, AggregateFailed> {
     let base = hash_to_curve(data, b"dfns-bls-style-hash");
+
+    // Verify the proofs
     let mut blame = Vec::new();
-    for (((value, proof), pub_share), j) in partials.iter().zip(public_shares).zip(0..) {
+    for (partial, pub_share) in partials.iter().zip(public_shares) {
         let shared_state = zkp::SharedState {
             eid,
-            prover_index: j,
+            prover_index: partial.i,
         };
         let data = zkp::Data {
             pub_share: pub_share.into_inner(),
             base: base.into_inner(),
-            value: value.into_inner(),
+            value: partial.v.into_inner(),
         };
-        if zkp::verify::<D, E>(&shared_state, data, *proof).is_err() {
-            blame.push(j);
+        if zkp::verify::<D, E>(&shared_state, data, partial.pi).is_err() {
+            blame.push(partial.i);
         };
     }
+    // The paper suggests to continue with an honest subset, but we prefer to
+    // abort
+    if !blame.is_empty() {
+        return Err(AggregateFailed::Verification(blame));
+    }
+
+    // Compute the aggregate digest
     if let Some(share_preimages) = share_preimages {
         // shamir aggregation
         let lagrange_coefficients = (0..(share_preimages.len()))
@@ -144,11 +152,11 @@ pub fn aggregate<D: digest::Digest, E: int::HashToCurve>(
         Ok(generic_ec::Scalar::multiscalar_mul(
             lagrange_coefficients
                 .into_iter()
-                .zip(partials.iter().map(|t| t.0)),
+                .zip(partials.iter().map(|t| t.v)),
         ))
     } else {
         // additive aggregation
-        Ok(partials.iter().map(|t| t.0).sum())
+        Ok(partials.iter().map(|t| t.v).sum())
     }
 }
 
@@ -167,6 +175,7 @@ pub enum AggregateFailed {
 /// Start an MPC protocol that digests the data with shared private key. Returns
 /// digested data
 ///
+/// - `eid` - execution id, a nonce shared by every party
 /// - `data` - byte string to digest
 /// - `i` - index of party in this protocol invocation, used for message routing
 /// - `key_share` - key share to use, can be additive or SSS
@@ -185,7 +194,7 @@ pub async fn start_digest<D, E, M>(
 ) -> Result<generic_ec::Point<E>, mpc::Error>
 where
     D: digest::Digest,
-    E: int::HashToCurve,
+    E: internal::HashToCurve,
     M: round_based::Mpc<ProtocolMessage = mpc::Msg<E>>,
 {
     let share_preimages = key_share
@@ -222,6 +231,55 @@ where
     .await
 }
 
+mod internal {
+    pub trait HashToCurve: generic_ec::Curve {
+        /// This function may fail, but the probability of that must be low. If
+        /// it fails, we retry with a different prefix. If it fails too many
+        /// times, we panic
+        fn hash_to_curve(
+            messages: &[&[u8]],
+            dst: &[u8],
+        ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>>;
+    }
+}
+
+impl internal::HashToCurve for generic_ec::curves::Secp256k1 {
+    fn hash_to_curve(
+        messages: &[&[u8]],
+        dst: &[u8],
+    ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
+        type ExtendedHash = k256::elliptic_curve::hash2curve::ExpandMsgXmd<sha2::Sha256>;
+        use k256::elliptic_curve::hash2curve::GroupDigest as _;
+        // This can fail if:
+        // 1. No domain separation tag is given
+        // 2. Output length is zero - impossible
+        // 3. Output length is longer than u16::MAX - impossible
+        // 4. Output length is grater than 255 * 32 - impossible
+        // 5. Output length overflows usize - impossible
+        let plain = k256::Secp256k1::hash_from_bytes::<ExtendedHash>(messages, &[dst]).ok()?;
+        let plain = generic_ec_curves::rust_crypto::RustCryptoPoint(plain);
+        let plain: generic_ec::Point<generic_ec_curves::Secp256k1> =
+            generic_ec::as_raw::FromRaw::from_raw(plain);
+        // Can fail if point is zero
+        generic_ec::NonZero::try_from(plain).ok()
+    }
+}
+
+fn hash_to_curve<E: internal::HashToCurve>(
+    message: &[u8],
+    dst: &[u8],
+) -> generic_ec::NonZero<generic_ec::Point<E>> {
+    for i in 0..=255u8 {
+        if let Some(r) = E::hash_to_curve(&[&[i], message], dst) {
+            return r;
+        }
+    }
+    #[allow(clippy::panic)]
+    {
+        panic!("Bad curve or hash algorithm: too many failures");
+    }
+}
+
 #[cfg(test)]
 mod test {
     type E = generic_ec::curves::Secp256k1;
@@ -250,23 +308,13 @@ mod test {
         let partials = shares
             .iter()
             .zip(0..)
-            .map(|(s, i)| {
-                super::partial_digest::<sha2::Sha256, E>(
-                    &crate::zkp::SharedState {
-                        prover_index: i,
-                        eid,
-                    },
-                    data,
-                    &s.x,
-                    &mut rng,
-                )
-            })
+            .map(|(s, i)| super::partial_digest::<sha2::Sha256, E>(eid, i, data, &s.x, &mut rng))
             .collect::<Vec<_>>();
         let restored = super::aggregate::<sha2::Sha256, E>(
+            eid,
             data,
             &partials[0..t],
             public_shares,
-            eid,
             share_preimages,
         )
         .unwrap();

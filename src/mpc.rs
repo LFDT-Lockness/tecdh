@@ -1,5 +1,3 @@
-use round_based::SinkExt as _;
-
 /// Protocol message
 #[derive(round_based::ProtocolMessage, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
@@ -12,10 +10,8 @@ pub enum Msg<E: generic_ec::Curve> {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub struct MsgPartial<E: generic_ec::Curve> {
-    /// Partial digest of a party
-    pub digest: generic_ec::NonZero<generic_ec::Point<E>>,
-    /// Proof of valid execution
-    pub proof: crate::zkp::Proof<E>,
+    /// Partial evaluation of party
+    pub evaluation: crate::PartialEvaluation<E>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -32,9 +28,11 @@ pub(crate) async fn run<D, E, M>(
 ) -> Result<generic_ec::Point<E>, Error>
 where
     D: digest::Digest,
-    E: super::int::HashToCurve,
+    E: crate::internal::HashToCurve,
     M: round_based::Mpc<ProtocolMessage = Msg<E>>,
 {
+    use round_based::SinkExt as _;
+
     let round_based::MpcParty { delivery, .. } = party.into_party();
     let (incomings, mut outgoings) = round_based::Delivery::split(delivery);
 
@@ -43,12 +41,8 @@ where
         rounds.add_round(round_based::rounds_router::simple_store::RoundInput::broadcast(i, n));
     let mut rounds = rounds.listen(incomings);
 
-    let shared_state = udigest::inline_struct!("PrEq" {
-        eid,
-        prover_index: i,
-    });
-    let (digest, proof) = super::partial_digest::<D, E>(&shared_state, data, secret_share, rng);
-    let my_partial = MsgPartial { digest, proof };
+    let evaluation = super::partial_digest::<D, E>(eid, i, data, secret_share, rng);
+    let my_partial = MsgPartial { evaluation };
     outgoings
         .send(round_based::Outgoing::broadcast(Msg::Partial(
             my_partial.clone(),
@@ -62,10 +56,10 @@ where
         .map_err(|x| Error::RecvMessage(Box::new(x)))?;
     let partials = partials
         .into_iter_including_me(my_partial)
-        .map(|s| (s.digest, s.proof))
+        .map(|s| s.evaluation)
         .collect::<Vec<_>>();
 
-    super::aggregate::<D, E>(data, &partials, public_shares, eid, share_preimages)
+    super::aggregate::<D, E>(eid, data, &partials, public_shares, share_preimages)
         .map_err(Error::AggregateFailed)
 }
 
