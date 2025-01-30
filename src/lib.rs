@@ -56,8 +56,8 @@ pub struct PartialEvaluation<E: generic_ec::Curve> {
 ///   computing the partial evaluations should agree on this value. This value
 ///   cannot be reused between executions as that leads to replay attacks
 /// - `i` - index of this party among other computing parties. If `t` parties
-///   are performing the partial evaluation, each index should be from `0` to `t
-///   - 1`. When using [`aggregate`], partial evaluations should be sorted by
+///   are performing the partial evaluation, each index should be from `0` to
+///   `t - 1`. When using [`aggregate`], partial evaluations should be sorted by
 ///   this index.
 /// - `other_key` - `H_1(x)` in paper, public key of the other party doing the
 ///    key exchange
@@ -224,7 +224,6 @@ where
     )
     .await
 }
-
 
 #[cfg(test)]
 mod test {
