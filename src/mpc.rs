@@ -17,18 +17,18 @@ pub struct MsgPartial<E: generic_ec::Curve> {
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run<D, E, M>(
     eid: &[u8],
-    data: &[u8],
+    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
     i: u16,
     n: u16,
     public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
     party: M,
-    rng: &mut impl rand_core::RngCore,
+    rng: &mut impl rand_core::CryptoRngCore,
 ) -> Result<generic_ec::Point<E>, Error>
 where
     D: digest::Digest,
-    E: crate::internal::HashToCurve,
+    E: generic_ec::Curve,
     M: round_based::Mpc<ProtocolMessage = Msg<E>>,
 {
     use round_based::SinkExt as _;
@@ -41,7 +41,7 @@ where
         rounds.add_round(round_based::rounds_router::simple_store::RoundInput::broadcast(i, n));
     let mut rounds = rounds.listen(incomings);
 
-    let evaluation = super::partial_digest::<D, E>(eid, i, data, secret_share, rng);
+    let evaluation = super::partial_ecdh::<E, D>(eid, i, other_key, secret_share, rng);
     let my_partial = MsgPartial { evaluation };
     outgoings
         .send(round_based::Outgoing::broadcast(Msg::Partial(
@@ -59,7 +59,7 @@ where
         .map(|s| s.evaluation)
         .collect::<Vec<_>>();
 
-    super::aggregate::<D, E>(eid, data, &partials, public_shares, share_preimages)
+    super::aggregate::<E, D>(eid, other_key, &partials, public_shares, share_preimages)
         .map_err(Error::AggregateFailed)
 }
 

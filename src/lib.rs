@@ -1,25 +1,14 @@
-//! This crate implements digesting into elliptic curve points keyed with a
-//! secret scalar for this curve. This digest resembles BLS signatures, but
-//! because we don't do signature verification, we're not limited in the choice
-//! of curves. Hashing to curve is based on rfc9380 with SHA2 hash and
-//! expand_message_xmd expansion. The procedure for a digest is as follows:
+//! This crate implements Threshold Elliptic Curve Diffie-Hellman key
+//! exchange.
 //!
-//! 1. Input parameters:
-//!     * `E` - an elliptic curve
-//!     * `m` - message to digest, given as a byte string
-//!     * `x` - secret key, given as a scalar for `E`
-//! 2. Initialize `i` to 0
-//! 2. Use the procedure in rfc9380 to hash the data `i as u8 || m` to curve point `p`
-//! 4. If `p` the procedure failed, or if `p` is zero or an invalid point,
-//!    increment `i` and retry from step *3*. If 256 attempts have already
-//!    elapsed, abort
-//! 5. Compute `p * x`
+//! Threshold means that the private key is shared between multiple parties.
+//! Only when a threshold amount of parties run the protocol together, can
+//! they form the diffie-hellman session key
 //!
-//! The distributed digest is based on https://eprint.iacr.org/2020/096
-//! That is, the partial digest is computed in the same way as a regular digest
-//! albeit with a shared key, and in addition a ZK proof of honest digest
-//! computation is produced, which is checked when aggregating partial digests.
-//! We use the DDH-based DVRF instatiation with non-compact proofs
+//! The procedure for running this protocol resembles tBLS signatures, and in
+//! fact was directly adpated from <https://eprint.iacr.org/2020/096>. A big
+//! difference from BLS is that since we don't need signature verification, we
+//! don't need efficient pairings and can use any curve we want.
 
 #![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
 #![cfg_attr(
@@ -29,110 +18,107 @@
 
 /// Helper types for the MPC execution
 pub mod mpc;
-mod zkp;
+use generic_ec_zkp::dlog_eq::non_interactive as dlog_eq;
 
-/// Compute digest of `data` keyed with `secret_key`
-pub fn digest<D: digest::Digest, E: internal::HashToCurve>(
-    data: &[u8],
-    secret_key: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
+/// Compute elliptic curve diffie-hellman for the given public key received from
+/// another party and a private key for this party
+pub fn ecdh<E: generic_ec::Curve>(
+    pubkey1: generic_ec::NonZero<generic_ec::Point<E>>,
+    privkey2: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
 ) -> generic_ec::NonZero<generic_ec::Point<E>> {
-    let plain = hash_to_curve(data, b"dfns-bls-style-hash");
-    plain * secret_key
+    pubkey1 * privkey2
 }
 
-/// Evaluation of partial digest as outputted by parties, computed by
-/// [`partial_digest`]. `t` partials can be aggregated with [`aggregate`]
+/// Evaluation of partial ECDH as outputted by parties, computed by
+/// [`partial_ecdh`]. `t` partials can be aggregated with [`aggregate`]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub struct PartialEvaluation<E: generic_ec::Curve> {
     /// Index of evaluating party
     pub i: u16,
-    /// Partial digest
+    /// Partial session key
     pub v: generic_ec::NonZero<generic_ec::Point<E>>,
     /// ZK proof
-    pub pi: zkp::Proof<E>,
+    pub pi: dlog_eq::Proof<E>,
 }
 
-/// Compute partial digest of `data` keyed with a key of which `secret_share` is a
-/// share of. Use [`aggregate`] to aggregate multiple partial digests into a full
-/// digest
+/// Compute partial result of key exchange, with `secret_share` being a share of
+/// this party's private key. Use [`aggregate`] to aggregate multiple such
+/// partial evaluations into a full session key.
 ///
-/// Together with digest a proof of honest correctness is computed. Every party
-/// is required to send this proof together with partial digest for aggregation.
+/// Together with partial session key, a proof of honest correctness is
+/// computed. Every party is required to send this proof together with their
+/// partial evaluation for aggregation.
 ///
 /// In paper this function is called `PartialEval(x, sk_i, vk_i)`, section IV.A
 ///
 /// - `eid` - execution id, used to prevent replay attacks. All parties
-///   computing partial digests should agree on this value. This value cannot be
-///   reused between executions as that leads to replay attacks
+///   computing the partial evaluations should agree on this value. This value
+///   cannot be reused between executions as that leads to replay attacks
 /// - `i` - index of this party among other computing parties. If `t` parties
-///   are computing partial digests, each index should be from `0` to `t - 1`.
-///   When using [`aggregate`], partial digests and proofs should be sorted by
+///   are performing the partial evaluation, each index should be from `0` to `t
+///   - 1`. When using [`aggregate`], partial evaluations should be sorted by
 ///   this index.
-/// - `data` - `x` in paper
-/// - `secret_share` - `sk` from paper. The `vk` argument in paper is computed
-///   from it
-pub fn partial_digest<D: digest::Digest, E: internal::HashToCurve>(
+/// - `other_key` - `H_1(x)` in paper, public key of the other party doing the
+///    key exchange
+/// - `secret_share` - `sk` from paper, share of the private key of the party
+///    doing this key exchange. The `vk` argument which is present in paper but
+///    not here is computed from it
+pub fn partial_ecdh<E: generic_ec::Curve, D: digest::Digest>(
     eid: &[u8],
     i: u16,
-    data: &[u8],
+    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
-    rng: &mut impl rand_core::RngCore,
+    rng: &mut impl rand_core::CryptoRngCore,
 ) -> PartialEvaluation<E> {
-    let plain = hash_to_curve(data, b"dfns-bls-style-hash");
-    let digest = plain * secret_share;
-    let proof_data = zkp::Data {
-        pub_share: (generic_ec::Point::generator() * secret_share).into_inner(),
-        base: plain.into_inner(),
-        value: digest.into_inner(),
-    };
-    let r = generic_ec::Scalar::random(rng);
-    let shared_state = zkp::SharedState {
+    let value = other_key * secret_share;
+    let proof_data = dlog_eq::Data::from_secret_key(secret_share, other_key.into_inner());
+    let shared_state = SharedState {
         eid,
         prover_index: i,
     };
-    let proof = zkp::prove::<D, E>(&shared_state, secret_share, proof_data, r);
+    let proof = dlog_eq::prove::<E, D>(rng, &shared_state, secret_share, proof_data);
     PartialEvaluation {
         i,
-        v: digest,
+        v: value,
         pi: proof,
     }
 }
 
-/// Aggregate `partials` - partial digest values - into a full value.
+/// Aggregate partial ECDH session keys into a full session key
 ///
 /// - `share_preimages` - should be `None` for additive key shares. For SSS, it
 ///   gives the points at which the keyshare values are computed, and should be in
 ///   the same order by participant as `partials`.
-/// - `data` - `x` in paper
+/// - `other_key` - `H_1(x)` in paper, public key of the other party doing the
+///    key exchange
 /// - `public_shares` - list of public shares of parties who computed partial
-///   digests, given in the same order as partials and share preimages. `VK` in
+///   evaluations, given in the same order as partials and share preimages. `VK` in
 ///   paper
-/// - `partials` - `E` in paper
+/// - `partials` - `E` in paper, partial ECDH session keys
 ///
 /// In paper this function is called `Combine(pk, VK, x, E)`, section IV.A
-pub fn aggregate<D: digest::Digest, E: internal::HashToCurve>(
+pub fn aggregate<E: generic_ec::Curve, D: digest::Digest>(
     eid: &[u8],
-    data: &[u8],
+    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
     partials: &[PartialEvaluation<E>],
     public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
 ) -> Result<generic_ec::Point<E>, AggregateFailed> {
-    let base = hash_to_curve(data, b"dfns-bls-style-hash");
-
     // Verify the proofs
     let mut blame = Vec::new();
     for (partial, pub_share) in partials.iter().zip(public_shares) {
-        let shared_state = zkp::SharedState {
+        let shared_state = SharedState {
             eid,
             prover_index: partial.i,
         };
-        let data = zkp::Data {
-            pub_share: pub_share.into_inner(),
-            base: base.into_inner(),
-            value: partial.v.into_inner(),
+        let data = dlog_eq::Data {
+            gen1: generic_ec::Point::generator().into(),
+            prod1: pub_share.into_inner(),
+            gen2: other_key.into_inner(),
+            prod2: partial.v.into_inner(),
         };
-        if zkp::verify::<D, E>(&shared_state, data, partial.pi).is_err() {
+        if dlog_eq::verify::<E, D>(&shared_state, data, partial.pi).is_err() {
             blame.push(partial.i);
         };
     }
@@ -142,7 +128,7 @@ pub fn aggregate<D: digest::Digest, E: internal::HashToCurve>(
         return Err(AggregateFailed::Verification(blame));
     }
 
-    // Compute the aggregate digest
+    // Compute the aggregate session key
     if let Some(share_preimages) = share_preimages {
         // shamir aggregation
         let lagrange_coefficients = (0..(share_preimages.len()))
@@ -160,6 +146,14 @@ pub fn aggregate<D: digest::Digest, E: internal::HashToCurve>(
     }
 }
 
+/// Shared state between proving in [`partial_ecdh`] and verifying in
+/// [`aggregate`]
+#[derive(udigest::Digestable)]
+struct SharedState<'a> {
+    eid: &'a [u8],
+    prover_index: u16,
+}
+
 /// Error for aggregation failing
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AggregateFailed {
@@ -172,29 +166,29 @@ pub enum AggregateFailed {
     Verification(Vec<u16>),
 }
 
-/// Start an MPC protocol that digests the data with shared private key. Returns
-/// digested data
+/// Start an MPC protocol that performs threshold ECDH with shared private key.
+/// Returns the session key
 ///
 /// - `eid` - execution id, a nonce shared by every party
-/// - `data` - byte string to digest
+/// - `other_key` - public key of the other party doing the key exchange
 /// - `i` - index of party in this protocol invocation, used for message routing
 /// - `key_share` - key share to use, can be additive or SSS
 /// - `participants` - which key holders are participating in the protocol,
 ///   given as indexes into `share_preimages` in key share. Ignored for additive
 ///   shares.
 /// - `party` - the `round-based` party
-pub async fn start_digest<D, E, M>(
+pub async fn start_ecdh<D, E, M>(
     eid: &[u8],
-    data: &[u8],
+    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
     i: u16,
     key_share: &key_share::CoreKeyShare<E>,
     participants: &[u16],
     party: M,
-    rng: &mut impl rand_core::RngCore,
+    rng: &mut impl rand_core::CryptoRngCore,
 ) -> Result<generic_ec::Point<E>, mpc::Error>
 where
     D: digest::Digest,
-    E: internal::HashToCurve,
+    E: generic_ec::Curve,
     M: round_based::Mpc<ProtocolMessage = mpc::Msg<E>>,
 {
     let share_preimages = key_share
@@ -219,7 +213,7 @@ where
 
     mpc::run::<D, E, M>(
         eid,
-        data,
+        other_key,
         &key_share.x,
         i,
         key_share.min_signers(),
@@ -231,54 +225,6 @@ where
     .await
 }
 
-mod internal {
-    pub trait HashToCurve: generic_ec::Curve {
-        /// This function may fail, but the probability of that must be low. If
-        /// it fails, we retry with a different prefix. If it fails too many
-        /// times, we panic
-        fn hash_to_curve(
-            messages: &[&[u8]],
-            dst: &[u8],
-        ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>>;
-    }
-}
-
-impl internal::HashToCurve for generic_ec::curves::Secp256k1 {
-    fn hash_to_curve(
-        messages: &[&[u8]],
-        dst: &[u8],
-    ) -> Option<generic_ec::NonZero<generic_ec::Point<Self>>> {
-        type ExtendedHash = k256::elliptic_curve::hash2curve::ExpandMsgXmd<sha2::Sha256>;
-        use k256::elliptic_curve::hash2curve::GroupDigest as _;
-        // This can fail if:
-        // 1. No domain separation tag is given
-        // 2. Output length is zero - impossible
-        // 3. Output length is longer than u16::MAX - impossible
-        // 4. Output length is grater than 255 * 32 - impossible
-        // 5. Output length overflows usize - impossible
-        let plain = k256::Secp256k1::hash_from_bytes::<ExtendedHash>(messages, &[dst]).ok()?;
-        let plain = generic_ec_curves::rust_crypto::RustCryptoPoint(plain);
-        let plain: generic_ec::Point<generic_ec_curves::Secp256k1> =
-            generic_ec::as_raw::FromRaw::from_raw(plain);
-        // Can fail if point is zero
-        generic_ec::NonZero::try_from(plain).ok()
-    }
-}
-
-fn hash_to_curve<E: internal::HashToCurve>(
-    message: &[u8],
-    dst: &[u8],
-) -> generic_ec::NonZero<generic_ec::Point<E>> {
-    for i in 0..=255u8 {
-        if let Some(r) = E::hash_to_curve(&[&[i], message], dst) {
-            return r;
-        }
-    }
-    #[allow(clippy::panic)]
-    {
-        panic!("Bad curve or hash algorithm: too many failures");
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -287,7 +233,7 @@ mod test {
     #[test_case::test_case(3, 5; "t3n5")]
     #[test_case::test_case(5, 5; "t5n5")]
     #[test_case::test_case(3, 7; "t3n7")]
-    fn aggregate_same_as_digest(t: u16, n: u16) {
+    fn aggregate_same_as_ecdh(t: u16, n: u16) {
         let t_ = if t == n { None } else { Some(t) };
         let t = usize::from(t);
         let mut rng = rand_dev::DevRng::new();
@@ -301,16 +247,17 @@ mod test {
         let public_shares = &shares[0].public_shares;
         let share_preimages = shares[0].vss_setup.as_ref().map(|vss| &vss.I[0..t]);
 
-        let data = b"take that you worm";
+        let data = generic_ec::Point::generator()
+            * generic_ec::NonZero::<generic_ec::Scalar<E>>::random(&mut rng);
         let eid = b"test";
 
-        let digest = super::digest::<sha2::Sha256, E>(data, &secret_key);
+        let ecdh = super::ecdh(data, &secret_key);
         let partials = shares
             .iter()
             .zip(0..)
-            .map(|(s, i)| super::partial_digest::<sha2::Sha256, E>(eid, i, data, &s.x, &mut rng))
+            .map(|(s, i)| super::partial_ecdh::<E, sha2::Sha256>(eid, i, data, &s.x, &mut rng))
             .collect::<Vec<_>>();
-        let restored = super::aggregate::<sha2::Sha256, E>(
+        let restored = super::aggregate::<E, sha2::Sha256>(
             eid,
             data,
             &partials[0..t],
@@ -319,13 +266,13 @@ mod test {
         )
         .unwrap();
 
-        assert_eq!(restored, digest);
+        assert_eq!(restored, ecdh);
     }
 
     #[test_case::test_case(3, 5; "t3n5")]
     #[test_case::test_case(5, 5; "t5n5")]
     #[test_case::test_case(3, 7; "t3n7")]
-    fn protocol_same_as_digest(t: u16, n: u16) {
+    fn protocol_same_as_ecdh(t: u16, n: u16) {
         let mut rng = rand_dev::DevRng::new();
 
         let secret_key = generic_ec::NonZero::<generic_ec::SecretScalar<E>>::random(&mut rng);
@@ -335,21 +282,22 @@ mod test {
             .generate_shares(&mut rng)
             .unwrap();
 
-        let data = b"take that you worm";
+        let data = generic_ec::Point::generator()
+            * generic_ec::NonZero::<generic_ec::Scalar<E>>::random(&mut rng);
         let party_indexes = random_participants(n, t, &mut rng);
         let parties = party_indexes
             .iter()
             .map(|x| u16::try_from(*x).unwrap())
             .collect::<Vec<_>>();
 
-        let digests = round_based::sim::run_with_setup(
+        let ecdhs = round_based::sim::run_with_setup(
             party_indexes.iter().copied(),
             |i, party, party_index| {
                 let mut rng = rng.fork();
                 let share = &shares[party_index];
                 let parties = &parties;
                 async move {
-                    crate::start_digest::<sha2::Sha256, _, _>(
+                    crate::start_ecdh::<sha2::Sha256, _, _>(
                         b"test", data, i, share, parties, party, &mut rng,
                     )
                     .await
@@ -360,9 +308,9 @@ mod test {
         .expect_ok()
         .into_vec();
 
-        let golden = super::digest::<sha2::Sha256, E>(data, &secret_key);
-        for digest in &digests {
-            assert_eq!(golden, *digest);
+        let golden = super::ecdh(data, &secret_key);
+        for ecdh in &ecdhs {
+            assert_eq!(golden, *ecdh);
         }
     }
 
