@@ -1,3 +1,5 @@
+use crate::lowlevel;
+
 /// Protocol message
 #[derive(round_based::ProtocolMessage, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
@@ -11,7 +13,7 @@ pub enum Msg<E: generic_ec::Curve> {
 #[serde(bound = "")]
 pub struct MsgPartial<E: generic_ec::Curve> {
     /// Partial evaluation of party
-    pub evaluation: crate::PartialEvaluation<E>,
+    pub evaluation: lowlevel::PartialEvaluation<E>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -41,7 +43,7 @@ where
         rounds.add_round(round_based::rounds_router::simple_store::RoundInput::broadcast(i, n));
     let mut rounds = rounds.listen(incomings);
 
-    let evaluation = super::partial_ecdh::<E, D>(eid, i, other_key, secret_share, rng);
+    let evaluation = lowlevel::partial_ecdh::<E, D>(eid, i, other_key, secret_share, rng);
     let my_partial = MsgPartial { evaluation };
     outgoings
         .send(round_based::Outgoing::broadcast(Msg::Partial(
@@ -59,7 +61,7 @@ where
         .map(|s| s.evaluation)
         .collect::<Vec<_>>();
 
-    super::aggregate::<E, D>(eid, other_key, &partials, public_shares, share_preimages)
+    lowlevel::aggregate::<E, D>(eid, other_key, &partials, public_shares, share_preimages)
         .map_err(Error::AggregateFailed)
 }
 
