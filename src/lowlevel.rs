@@ -39,20 +39,21 @@ pub struct PartialEvaluation<E: generic_ec::Curve> {
 ///   are performing the partial evaluation, each index should be from `0` to
 ///   `t - 1`. When using [`aggregate`], partial evaluations should be sorted by
 ///   this index.
-/// - `other_key` - `H_1(x)` in paper, public key of the other party doing the
-///    key exchange
+/// - `counterparty_public_key` - `H_1(x)` in paper, public key of the other
+///   party doing the key exchange
 /// - `secret_share` - `sk` from paper, share of the private key of the party
 ///    doing this key exchange. The `vk` argument which is present in paper but
 ///    not here is computed from it
 pub fn partial_ecdh<E: generic_ec::Curve, D: digest::Digest>(
     eid: &[u8],
     i: u16,
-    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
+    counterparty_public_key: generic_ec::NonZero<generic_ec::Point<E>>,
     secret_share: &generic_ec::NonZero<generic_ec::SecretScalar<E>>,
     rng: &mut impl rand_core::CryptoRngCore,
 ) -> PartialEvaluation<E> {
-    let value = other_key * secret_share;
-    let proof_data = dlog_eq::Data::from_secret_key(secret_share, other_key.into_inner());
+    let value = counterparty_public_key * secret_share;
+    let proof_data =
+        dlog_eq::Data::from_secret_key(secret_share, counterparty_public_key.into_inner());
     let shared_state = SharedState {
         eid,
         prover_index: i,
@@ -67,20 +68,24 @@ pub fn partial_ecdh<E: generic_ec::Curve, D: digest::Digest>(
 
 /// Aggregate partial ECDH session keys into a full session key
 ///
-/// - `share_preimages` - should be `None` for additive key shares. For SSS, it
-///   gives the points at which the keyshare values are computed, and should be in
-///   the same order by participant as `partials`.
-/// - `other_key` - `H_1(x)` in paper, public key of the other party doing the
-///    key exchange
+/// - `counterparty_public_key` - `H_1(x)` in paper, public key of the other
+///   party doing the key exchange
 /// - `public_shares` - list of public shares of parties who computed partial
 ///   evaluations, given in the same order as partials and share preimages. `VK` in
 ///   paper
 /// - `partials` - `E` in paper, partial ECDH session keys
+/// - `share_preimages` - should be `None` for additive key shares. For SSS, it
+///   gives the points at which the keyshare values are computed, and should be in
+///   the same order by participant as `partials`
+///
+/// Partials, public shares and share preimages each should correspond to the
+/// same party, that is all be ordered in the same way by the index of the party
+/// they come from.
 ///
 /// In paper this function is called `Combine(pk, VK, x, E)`, section IV.A
 pub fn aggregate<E: generic_ec::Curve, D: digest::Digest>(
     eid: &[u8],
-    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
+    counterparty_public_key: generic_ec::NonZero<generic_ec::Point<E>>,
     partials: &[PartialEvaluation<E>],
     public_shares: &[generic_ec::NonZero<generic_ec::Point<E>>],
     share_preimages: Option<&[generic_ec::NonZero<generic_ec::Scalar<E>>]>,
@@ -95,7 +100,7 @@ pub fn aggregate<E: generic_ec::Curve, D: digest::Digest>(
         let data = dlog_eq::Data {
             gen1: generic_ec::Point::generator().into(),
             prod1: pub_share.into_inner(),
-            gen2: other_key.into_inner(),
+            gen2: counterparty_public_key.into_inner(),
             prod2: partial.v.into_inner(),
         };
         if dlog_eq::verify::<E, D>(&shared_state, data, partial.pi).is_err() {

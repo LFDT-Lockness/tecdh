@@ -26,16 +26,17 @@ pub mod mpc;
 /// Returns the session key
 ///
 /// - `eid` - execution id, a nonce shared by every party
-/// - `other_key` - public key of the other party doing the key exchange
+/// - `counterparty_public_key` - public key of the other party doing the key
+///   exchange
 /// - `i` - index of party in this protocol invocation, used for message routing
 /// - `key_share` - key share to use, can be additive or SSS
 /// - `participants` - which key holders are participating in the protocol,
-///   given as indexes into `share_preimages` in key share. Ignored for additive
-///   shares.
+///   given as indexes into `share_preimages` in key share. These are the
+///   indexes that the parties occupied at keygen
 /// - `party` - the `round-based` party
-pub async fn start_ecdh<D, E, M>(
+pub async fn start<D, E, M>(
     eid: &[u8],
-    other_key: generic_ec::NonZero<generic_ec::Point<E>>,
+    counterparty_public_key: generic_ec::NonZero<generic_ec::Point<E>>,
     i: u16,
     key_share: &key_share::CoreKeyShare<E>,
     participants: &[u16],
@@ -69,7 +70,7 @@ where
 
     mpc::run::<D, E, M>(
         eid,
-        other_key,
+        counterparty_public_key,
         &key_share.x,
         i,
         key_share.min_signers(),
@@ -125,7 +126,7 @@ mod test {
                 let share = &shares[party_index];
                 let parties = &parties;
                 async move {
-                    crate::start_ecdh::<sha2::Sha256, _, _>(
+                    crate::start::<sha2::Sha256, _, _>(
                         b"test", data, i, share, parties, party, &mut rng,
                     )
                     .await
