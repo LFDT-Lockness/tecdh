@@ -386,9 +386,9 @@ dependencies = [
 
 [[package]]
 name = "key-share"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ea364cb2397405d8c79afd3de173ca7e2e1d83a4ddd94d359263480ad96f06f"
+checksum = "3ee8e510bb9f738ac400b7dedd98aeb23677c6b48cd3b1b682651ea5091f4282"
 dependencies = [
  "displaydoc",
  "generic-ec",
