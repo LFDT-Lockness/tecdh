@@ -42,8 +42,8 @@ pub struct PartialEvaluation<E: generic_ec::Curve> {
 /// - `counterparty_public_key` - `H_1(x)` in paper, public key of the other
 ///   party doing the key exchange
 /// - `secret_share` - `sk` from paper, share of the private key of the party
-///    doing this key exchange. The `vk` argument which is present in paper but
-///    not here is computed from it
+///   doing this key exchange. The `vk` argument which is present in paper but
+///   not here is computed from it
 pub fn partial_ecdh<E: generic_ec::Curve, D: digest::Digest>(
     eid: &[u8],
     i: u16,
