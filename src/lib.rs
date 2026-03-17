@@ -24,7 +24,6 @@ pub use key_share;
 /// Reexport for convenience
 pub use round_based;
 
-
 /// Start an MPC protocol that performs threshold ECDH with shared private key.
 /// Returns the session key
 ///

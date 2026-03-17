@@ -11,8 +11,12 @@ pub fn ecdh<E: generic_ec::Curve>(
 
 /// Evaluation of partial ECDH as outputted by parties, computed by
 /// [`partial_ecdh`]. `t` partials can be aggregated with [`aggregate`]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "")
+)]
 pub struct PartialEvaluation<E: generic_ec::Curve> {
     /// Index of evaluating party
     pub i: u16,
