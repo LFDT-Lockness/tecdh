@@ -1,14 +1,9 @@
 //! This crate implements Threshold Elliptic Curve Diffie-Hellman key
 //! exchange.
 //!
-//! Threshold means that the private key is shared between multiple parties.
-//! Only when a threshold amount of parties run the protocol together, can
-//! they form the diffie-hellman session key
-//!
-//! The procedure for running this protocol resembles tBLS signatures, and in
-//! fact was directly adpated from <https://eprint.iacr.org/2020/096>. A big
-//! difference from BLS is that since we don't need signature verification, we
-//! don't need efficient pairings and can use any curve we want.
+//! To run the protocol, you need to call the [`start`] function. See the
+//! repository [readme](https://github.com/dfns/LFDT-Lockness/blob/m/README.md)
+//! for more information on how to set up the parameters
 
 #![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
 #![cfg_attr(
@@ -21,6 +16,14 @@
 pub mod lowlevel;
 /// Helper types for the MPC execution
 pub mod mpc;
+
+/// Reexport for convenience
+pub use generic_ec;
+/// Reexport for convenience
+pub use key_share;
+/// Reexport for convenience
+pub use round_based;
+
 
 /// Start an MPC protocol that performs threshold ECDH with shared private key.
 /// Returns the session key
