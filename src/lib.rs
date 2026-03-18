@@ -12,7 +12,7 @@
 )]
 
 /// Functions to perform low-level operations. This can be misused, so they are
-/// not recommended unless you know how tECDH works
+/// ⚠️not recommended⚠️ unless you know how tECDH works
 pub mod lowlevel;
 /// Helper types for the MPC execution
 pub mod mpc;

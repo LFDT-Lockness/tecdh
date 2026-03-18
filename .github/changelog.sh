@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 m_branch=m;
-changelog_file=CHANGELOG.md;
+changelog_file=changelog.md;
 
 # fetch master since we might be in a shallow clone
 git fetch origin "$m_branch:$m_branch" --depth=1
