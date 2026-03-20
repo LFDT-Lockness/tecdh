@@ -16,35 +16,53 @@ In short, you will need to load the key shares, establish network connection
 between parties, obtain a shared execution id, match the party indicies, and
 then commence the protocol.
 
-```rust
+```rust,no_run
+# async fn _example() {
+use tecdh::{round_based, generic_ec};
+# use std::{pin::Pin, task::{Context, Poll}};
+# struct Example<T>(std::marker::PhantomData<T>);
+# impl<T> round_based::Stream for Example<T> {
+#     type Item = T;
+#     fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> { todo!() }
+# }
+# impl<T> round_based::Sink<T> for Example<T> {
+#     type Error = std::io::Error;
+#     fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
+#     fn start_send(self: Pin<&mut Self>, _: T) -> Result<(), Self::Error> { todo!() }
+#     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
+#     fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
+# }
 // Curve of your choice
-use E = tecdh::generic_ec::curves::Ed25519;
+type E = generic_ec::curves::Ed25519;
 // The unique execution ID which the parties agree to before starting
 let execution_id: Vec<u8> = todo!();
 // The key of the counterparty you're performing the ECDH handshake with
-let counterparty: tecdh::generic_ec::NonZero<tecdh::generic_ec::Point<E>> = todo!();
+let counterparty: generic_ec::NonZero<generic_ec::Point<E>> = todo!();
 // The key share that was generated in advance and is now loaded from
 // persistent storage
 let key_share: tecdh::key_share::CoreKeyShare<E> = todo!();
 // The network setup using `round-based`
-let incoming: tecdh::round_based::Stream<tcedh::mpc::Msg<E>> = todo!();
-let outgoing: tecdh::round_based::Sink<tcedh::mpc::Msg<E>> = todo!();
-let party = tecdh::round_based::MpcParty::connected((incoming, outgoing)) = todo!();
+fn make_incoming() -> impl round_based::Stream<Item = Result<round_based::Incoming<tecdh::mpc::Msg<E>>, std::io::Error>>
+#     { Example(std::marker::PhantomData) }
+fn make_outgoing() -> impl round_based::Sink<round_based::Outgoing<tecdh::mpc::Msg<E>>, Error = std::io::Error>
+#     { Example(std::marker::PhantomData) }
+let party = round_based::MpcParty::connected((make_incoming(), make_outgoing()));
 // Match party indicies from keygen to the current participants (not used for
-additive key shares)
+// additive key shares)
 let participant_indicies: &[u16] = todo!();
 let this_party_index: u16 = todo!();
 
 // Run the protocol
 let session_key = tecdh::start::<sha2::Sha256, E, _>(
-    execution_id,
+    &execution_id,
     counterparty,
     this_party_index,
-    key_share,
+    &key_share,
     participant_indicies,
     party,
     &mut rand::rngs::OsRng,
 ).await.unwrap();
+# }
 ```
 
 ### Distributed key generation

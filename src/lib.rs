@@ -1,10 +1,4 @@
-//! This crate implements Threshold Elliptic Curve Diffie-Hellman key
-//! exchange.
-//!
-//! To run the protocol, you need to call the [`start`] function. See the
-//! repository [readme](https://github.com/dfns/LFDT-Lockness/blob/m/README.md)
-//! for more information on how to set up the parameters
-
+#![doc = include_str!("../README.md")]
 #![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
 #![cfg_attr(
     not(test),
