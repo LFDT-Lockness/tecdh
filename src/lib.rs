@@ -92,6 +92,9 @@ pub enum AggregateFailed {
 
 #[cfg(test)]
 mod test {
+    // Used in doctests only
+    use futures as _;
+
     type E = generic_ec::curves::Secp256k1;
 
     #[test_case::test_case(3, 5; "t3n5")]

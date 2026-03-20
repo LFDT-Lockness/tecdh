@@ -10,6 +10,17 @@ fact was directly adpated from <https://eprint.iacr.org/2020/096>. A big
 difference from BLS is that since we don't need signature verification, we
 don't need efficient pairings and can use any curve we want.
 
+## Cargo features
+
+This crate has the following feature flags:
+
+- `serde` - enable serde support for the data types exported by this crate.
+  **Enabled** by default
+- `curve-secp256k1` - enable Secp256k1 curve in `generic_ec::curves`
+- `curve-secp256r1` - enable Secp256r1 curve in `generic_ec::curves`
+- `curve-ed25519` - enable Ed25519 curve in `generic_ec::curves`
+- `curve-stark` - enable Stark curve in `generic_ec::curves`
+
 ## How to use the library
 
 In short, you will need to load the key shares, establish network connection
@@ -17,61 +28,51 @@ between parties, obtain a shared execution id, match the party indicies, and
 then commence the protocol.
 
 ```rust,no_run
-# async fn _example() {
 use tecdh::{round_based, generic_ec};
-# use std::{pin::Pin, task::{Context, Poll}};
-# struct Example<T>(std::marker::PhantomData<T>);
-# impl<T> round_based::Stream for Example<T> {
-#     type Item = T;
-#     fn poll_next(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> { todo!() }
-# }
-# impl<T> round_based::Sink<T> for Example<T> {
-#     type Error = std::io::Error;
-#     fn poll_ready(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
-#     fn start_send(self: Pin<&mut Self>, _: T) -> Result<(), Self::Error> { todo!() }
-#     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
-#     fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> { todo!() }
-# }
 // Curve of your choice
 type E = generic_ec::curves::Ed25519;
-// The unique execution ID which the parties agree to before starting
-let execution_id: Vec<u8> = todo!();
-// The key of the counterparty you're performing the ECDH handshake with
-let counterparty: generic_ec::NonZero<generic_ec::Point<E>> = todo!();
-// The key share that was generated in advance and is now loaded from
-// persistent storage
-let key_share: tecdh::key_share::CoreKeyShare<E> = todo!();
-// The network setup using `round-based`
-fn make_incoming() -> impl round_based::Stream<Item = Result<round_based::Incoming<tecdh::mpc::Msg<E>>, std::io::Error>>
-#     { Example(std::marker::PhantomData) }
-fn make_outgoing() -> impl round_based::Sink<round_based::Outgoing<tecdh::mpc::Msg<E>>, Error = std::io::Error>
-#     { Example(std::marker::PhantomData) }
-let party = round_based::MpcParty::connected((make_incoming(), make_outgoing()));
-// Match party indicies from keygen to the current participants (not used for
-// additive key shares)
-let participant_indicies: &[u16] = todo!();
-let this_party_index: u16 = todo!();
 
-// Run the protocol
-let session_key = tecdh::start::<sha2::Sha256, E, _>(
-    &execution_id,
-    counterparty,
-    this_party_index,
-    &key_share,
-    participant_indicies,
-    party,
-    &mut rand::rngs::OsRng,
-).await.unwrap();
-# }
+async fn example() -> Result<generic_ec::Point<E>, tecdh::mpc::Error> {
+    // The unique execution ID which the parties agree to before starting
+    let execution_id: Vec<u8> = todo!();
+    // The key of the counterparty you're performing the ECDH handshake with
+    let counterparty: generic_ec::NonZero<generic_ec::Point<E>> = todo!();
+    // The key share that was generated in advance and is now loaded from
+    // persistent storage
+    let key_share: tecdh::key_share::CoreKeyShare<E> = todo!();
+    // The network setup using `round-based` and `futures`
+    let incoming = futures::stream::pending::<Result<round_based::Incoming<tecdh::mpc::Msg<E>>, std::io::Error>>();
+    let outgoing = futures::sink::drain::<round_based::Outgoing<tecdh::mpc::Msg<E>>>();
+    let party = round_based::MpcParty::connected((incoming, outgoing));
+    // Match party indicies from keygen to the current participants (not used for
+    // additive key shares)
+    let participant_indicies: &[u16] = todo!();
+    let this_party_index: u16 = todo!();
+
+    // Run the protocol
+    let session_key = tecdh::start::<sha2::Sha256, E, _>(
+        &execution_id,
+        counterparty,
+        this_party_index,
+        &key_share,
+        participant_indicies,
+        party,
+        &mut rand::rngs::OsRng,
+    ).await?;
+
+    // Use the generated session key
+    Ok(session_key)
+}
 ```
 
 ### Distributed key generation
 
 First of all, you will need to generate a key that the distributed parties will
 use. For that purpose, you can use any secure DKG protocol. We recommend using
-[cggmp21-keygen](https://docs.rs/cggmp21-keygen/0.5.0/cggmp21_keygen/) --- it's
+[cggmp21-keygen](https://docs.rs/cggmp21-keygen/0.5.0/cggmp21_keygen/) - it's
 an interactive protocol built on the same foundations of `round-based` and
-`generic-ec`.
+`generic-ec`, and outputs the key share of the same type and format as expected
+by this library.
 
 ### Networking
 
@@ -83,7 +84,7 @@ using its primitives, which are in practice the `Sink` and `Stream` types from
 The exact underlying mechanism behind the sink and stream depend on the
 application and are not provided here. Some application will use libp2p, others
 may want to use a message broker like kafka or postgres.  
-No matter the implementation, all messages need to be authenticated --- when
+No matter the implementation, all messages need to be authenticated - when
 one party receives a message from another, it needs to be able to verify that
 the message comes from the claimed sender.
 
