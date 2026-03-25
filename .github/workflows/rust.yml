@@ -28,6 +28,15 @@ jobs:
         cache-on-failure: "true"
     - name: Check all features
       run: cargo check --all-features
+  publish-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
+      with:
+        cache-on-failure: "true"
+    - name: Check all features
+      run: cargo publish --dry-run
   test:
     runs-on: ubuntu-latest
     steps:

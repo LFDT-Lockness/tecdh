@@ -2,6 +2,12 @@
 name = "tecdh"
 version = "0.2.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Threshold elliptic-curve Diffie-Hellman key exchange"
+repository = "https://github.com/LFDT-Lockness/tecdh"
+categories = ["algorithms", "cryptography"]
+keywords = ["mpc", "tss", "diffie-hellman"]
+readme = "README.md"
 
 [dependencies]
 digest = "0.10"
