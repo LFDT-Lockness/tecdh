@@ -11,8 +11,12 @@ pub fn ecdh<E: generic_ec::Curve>(
 
 /// Evaluation of partial ECDH as outputted by parties, computed by
 /// [`partial_ecdh`]. `t` partials can be aggregated with [`aggregate`]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "")
+)]
 pub struct PartialEvaluation<E: generic_ec::Curve> {
     /// Index of evaluating party
     pub i: u16,
@@ -79,8 +83,8 @@ pub fn partial_ecdh<E: generic_ec::Curve, D: digest::Digest>(
 ///   the same order by participant as `partials`
 ///
 /// Partials, public shares and share preimages each should correspond to the
-/// same party, that is all be ordered in the same way by the index of the party
-/// they come from.
+/// same party, that is, they should all be ordered in the same way by the index
+/// of the party they come from.
 ///
 /// In paper this function is called `Combine(pk, VK, x, E)`, section IV.A
 pub fn aggregate<E: generic_ec::Curve, D: digest::Digest>(

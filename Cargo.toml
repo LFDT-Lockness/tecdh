@@ -1,18 +1,19 @@
 [package]
 name = "tecdh"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
 digest = "0.10"
-generic-ec = { version = "0.4.5", features = ["serde", "curve-secp256k1", "hash-to-scalar"] }
+generic-ec = { version = "0.4.5", features = ["serde", "hash-to-scalar"] }
 generic-ec-zkp = { version = "0.4.4", features = ["serde", "udigest"] }
 key-share = "0.6"
 rand_core = { version = "0.6", default-features = false }
 round-based = { version = "0.4", features = ["derive"] }
-serde = "1"
 thiserror = { version = "2" }
 udigest = { version = "0.2", default-features = false, features = ["inline-struct", "derive"] }
+
+serde = { version = "1", optional = true }
 
 [dev-dependencies]
 generic-ec = { version = "0.4.5", features = ["curve-ed25519"] }
@@ -22,3 +23,15 @@ rand_dev = "0.1"
 round-based = { version = "0.4", features = ["sim"] }
 sha2 = "0.10"
 test-case = "3"
+# doctests only
+futures = "0.3"
+
+[features]
+default = ["serde"]
+
+serde = ["dep:serde", "generic-ec/serde", "generic-ec-zkp/serde"]
+
+curve-secp256k1 = ["generic-ec/curve-secp256k1"]
+curve-secp256r1 = ["generic-ec/curve-secp256r1"]
+curve-ed25519 = ["generic-ec/curve-ed25519"]
+curve-stark = ["generic-ec/curve-stark"]

@@ -1,16 +1,24 @@
 use crate::lowlevel;
 
 /// Protocol message
-#[derive(round_based::ProtocolMessage, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(round_based::ProtocolMessage, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "")
+)]
 pub enum Msg<E: generic_ec::Curve> {
     /// The only round
     Partial(MsgPartial<E>),
 }
 
 /// Protocol message
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound = "")
+)]
 pub struct MsgPartial<E: generic_ec::Curve> {
     /// Partial evaluation of party
     pub evaluation: lowlevel::PartialEvaluation<E>,

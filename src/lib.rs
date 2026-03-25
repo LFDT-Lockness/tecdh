@@ -1,15 +1,4 @@
-//! This crate implements Threshold Elliptic Curve Diffie-Hellman key
-//! exchange.
-//!
-//! Threshold means that the private key is shared between multiple parties.
-//! Only when a threshold amount of parties run the protocol together, can
-//! they form the diffie-hellman session key
-//!
-//! The procedure for running this protocol resembles tBLS signatures, and in
-//! fact was directly adpated from <https://eprint.iacr.org/2020/096>. A big
-//! difference from BLS is that since we don't need signature verification, we
-//! don't need efficient pairings and can use any curve we want.
-
+#![doc = include_str!("../README.md")]
 #![warn(missing_docs, unsafe_code, unused_crate_dependencies)]
 #![cfg_attr(
     not(test),
@@ -17,10 +6,17 @@
 )]
 
 /// Functions to perform low-level operations. This can be misused, so they are
-/// not recommended unless you know how tECDH works
+/// ⚠️not recommended⚠️ unless you know how tECDH works
 pub mod lowlevel;
 /// Helper types for the MPC execution
 pub mod mpc;
+
+/// Reexport for convenience
+pub use generic_ec;
+/// Reexport for convenience
+pub use key_share;
+/// Reexport for convenience
+pub use round_based;
 
 /// Start an MPC protocol that performs threshold ECDH with shared private key.
 /// Returns the session key
@@ -96,6 +92,9 @@ pub enum AggregateFailed {
 
 #[cfg(test)]
 mod test {
+    // Used in doctests only
+    use futures as _;
+
     type E = generic_ec::curves::Secp256k1;
 
     #[test_case::test_case(3, 5; "t3n5")]
