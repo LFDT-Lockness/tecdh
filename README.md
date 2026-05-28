@@ -1,3 +1,7 @@
+![License](https://img.shields.io/crates/l/tecdh.svg)
+[![Docs](https://docs.rs/tecdh/badge.svg)](https://docs.rs/tecdh)
+[![Crates io](https://img.shields.io/crates/v/tecdh.svg)](https://crates.io/crates/tecdh)
+[![Discord](https://img.shields.io/discord/905194001349627914?logo=discord&logoColor=ffffff&label=Discord)](https://discordapp.com/channels/905194001349627914/1285268686147424388)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/LFDT-Lockness/tecdh/badge)](https://scorecard.dev/viewer/?uri=github.com/LFDT-Lockness/tecdh)
 
 # tECDH - threshold elliptic-curve Diffie-Hellman key exchange
