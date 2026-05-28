@@ -1,3 +1,5 @@
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/LFDT-Lockness/tecdh/badge)](https://scorecard.dev/viewer/?uri=github.com/LFDT-Lockness/tecdh)
+
 # tECDH - threshold elliptic-curve Diffie-Hellman key exchange
 
 This crate implements tECDH - when one of the Diffie-Hellman keys is kept as
