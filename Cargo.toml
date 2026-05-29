@@ -24,7 +24,7 @@ serde = { version = "1", optional = true }
 [dev-dependencies]
 generic-ec = { version = "0.4.5", features = ["curve-ed25519"] }
 key-share = { version = "0.6", features = ["spof"] }
-rand = "0.8"
+rand = "0.10"
 rand_dev = "0.1"
 round-based = { version = "0.4", features = ["sim"] }
 sha2 = "0.10"
