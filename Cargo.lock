@@ -368,7 +368,7 @@ checksum = "8de1099ac0b4d87261d67ff5d4ed400af617a1da40b58908d759b9cf5fd8ed27"
 dependencies = [
  "curve25519-dalek",
  "digest",
- "generic-ec-core",
+ "generic-ec-core 0.2.3",
  "generic-ec-curves",
  "hex",
  "phantom-type 0.4.2",
@@ -378,6 +378,21 @@ dependencies = [
  "serde_with",
  "subtle",
  "udigest",
+ "zeroize",
+]
+
+[[package]]
+name = "generic-ec"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "508a3270730504f9a5cd1dcd7ac743cb06e9b414db28b3a835554bd1268ebd75"
+dependencies = [
+ "curve25519-dalek",
+ "generic-ec-core 0.3.0",
+ "hex",
+ "phantom-type 0.4.2",
+ "rand_core",
+ "subtle",
  "zeroize",
 ]
 
@@ -395,6 +410,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "generic-ec-core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffea0573b3bdde9a0bbbf17433b19f9628942e075d723702c2f495f0a2f65268"
+dependencies = [
+ "generic-array",
+ "rand_core",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "generic-ec-curves"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -402,7 +429,7 @@ checksum = "4c7c6d23001a5eb60eec2b785a63d2ca965fdfbaf3314b3b46df047398369e28"
 dependencies = [
  "curve25519-dalek",
  "elliptic-curve",
- "generic-ec-core",
+ "generic-ec-core 0.2.3",
  "group",
  "k256",
  "p256",
@@ -421,7 +448,21 @@ checksum = "bd3945c585fdddba3f86bda4e4cfba22d5e255001b3e145c9db305ad096c6d88"
 dependencies = [
  "digest",
  "generic-array",
- "generic-ec",
+ "generic-ec 0.4.5",
+ "rand_core",
+ "serde",
+ "subtle",
+ "udigest",
+]
+
+[[package]]
+name = "generic-ec-zkp"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b19b88bd3d9b24d30d21ee91c0feb9480e4fec008a1b8b9bf2c16e0afbf43a2e"
+dependencies = [
+ "generic-array",
+ "generic-ec 0.5.0",
  "rand_core",
  "serde",
  "subtle",
@@ -480,13 +521,13 @@ dependencies = [
 
 [[package]]
 name = "key-share"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ee8e510bb9f738ac400b7dedd98aeb23677c6b48cd3b1b682651ea5091f4282"
+checksum = "4c6ef14aa29a4d7cac8026894c16821e6dee20bfa8c8f7bb9d2820e05e756652"
 dependencies = [
  "displaydoc",
- "generic-ec",
- "generic-ec-zkp",
+ "generic-ec 0.5.0",
+ "generic-ec-zkp 0.5.0",
  "rand_core",
  "thiserror 1.0.69",
 ]
@@ -834,8 +875,8 @@ version = "0.2.0"
 dependencies = [
  "digest",
  "futures",
- "generic-ec",
- "generic-ec-zkp",
+ "generic-ec 0.4.5",
+ "generic-ec-zkp 0.4.4",
  "key-share",
  "rand",
  "rand_core",
