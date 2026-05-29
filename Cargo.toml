@@ -27,7 +27,7 @@ key-share = { version = "0.6", features = ["spof"] }
 rand = "0.8"
 rand_dev = "0.1"
 round-based = { version = "0.4", features = ["sim"] }
-sha2 = "0.10"
+sha2 = "0.11"
 test-case = "3"
 # doctests only
 futures = "0.3"
