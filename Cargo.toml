@@ -25,7 +25,7 @@ serde = { version = "1", optional = true }
 generic-ec = { version = "0.4.5", features = ["curve-ed25519"] }
 key-share = { version = "0.6", features = ["spof"] }
 rand = "0.8"
-rand_dev = "0.1"
+rand_dev = "0.2"
 round-based = { version = "0.4", features = ["sim"] }
 sha2 = "0.10"
 test-case = "3"
