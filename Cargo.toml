@@ -17,7 +17,7 @@ key-share = "0.6"
 rand_core = { version = "0.6", default-features = false }
 round-based = { version = "0.4", features = ["derive"] }
 thiserror = { version = "2" }
-udigest = { version = "0.2", default-features = false, features = ["inline-struct", "derive"] }
+udigest = { version = "0.4", default-features = false, features = ["inline-struct", "derive"] }
 
 serde = { version = "1", optional = true }
 
