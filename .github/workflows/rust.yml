@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Check no features
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Check all features
@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Check all features
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Run tests
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Run clippy
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Run clippy tests
@@ -75,7 +75,7 @@ jobs:
     steps:
     - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 #nightly
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
-    - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae #v2
+    - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 #v2
       with:
         cache-on-failure: "true"
     - name: Check docs
